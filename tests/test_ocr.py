@@ -96,3 +96,16 @@ def test_find_tesseract_cmd_windows_default(monkeypatch, tmp_path):
     monkeypatch.setattr("shutil.which", lambda name: None)
     monkeypatch.setenv("ProgramFiles", str(tmp_path))
     assert ocr.find_tesseract_cmd() == str(exe)
+
+
+def test_find_tesseract_cmd_per_user_install(monkeypatch, tmp_path):
+    from setlist2spotify import ocr
+
+    exe = tmp_path / "Programs" / "Tesseract-OCR" / "tesseract.exe"
+    exe.parent.mkdir(parents=True)
+    exe.write_text("")
+    for var in ("TESSERACT_CMD", "ProgramFiles", "ProgramFiles(x86)"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    assert ocr.find_tesseract_cmd() == str(exe)

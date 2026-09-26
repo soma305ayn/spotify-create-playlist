@@ -101,8 +101,13 @@ class TesseractExtractor:
         from PIL import Image
 
         cmd = find_tesseract_cmd()
-        if cmd:
-            pytesseract.pytesseract.tesseract_cmd = cmd
+        if not cmd:
+            raise RuntimeError(
+                "Tesseract が見つかりません。インストール済みの場合は、tesseract.exe の場所を "
+                "環境変数 TESSERACT_CMD に設定してください。\n"
+                '例（PowerShell）: $env:TESSERACT_CMD="C:\\Program Files\\Tesseract-OCR\\tesseract.exe"'
+            )
+        pytesseract.pytesseract.tesseract_cmd = cmd
 
         with Image.open(image_path) as img:
             img.load()
@@ -131,7 +136,14 @@ def find_tesseract_cmd() -> Optional[str]:
     found = shutil.which("tesseract")
     if found:
         return found
-    for base in (os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)"), os.environ.get("LOCALAPPDATA")):
+    local = os.environ.get("LOCALAPPDATA")
+    bases = [
+        os.environ.get("ProgramFiles"),
+        os.environ.get("ProgramFiles(x86)"),
+        str(Path(local) / "Programs") if local else None,  # 「自分だけ用」にインストールした場合
+        local,
+    ]
+    for base in bases:
         if base:
             candidate = Path(base) / "Tesseract-OCR" / "tesseract.exe"
             if candidate.exists():
