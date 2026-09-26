@@ -1,7 +1,8 @@
 """コマンドライン: セットリストのテキスト → Spotify 検索 → プレイリスト作成。
 
 例:
-    python -m setlist2spotify                     # 画面にセットリストを貼り付けて実行
+    python -m setlist2spotify                     # 貼り付けか手入力かを選んで実行
+    python -m setlist2spotify --type              # 1 曲ずつ手入力
     python -m setlist2spotify --clipboard         # クリップボードの内容を使う
     python -m setlist2spotify setlist.txt --artist 櫻坂46 --name "5th YEAR ANNIVERSARY LIVE"
 """
@@ -13,6 +14,7 @@ import datetime
 import json
 import os
 import sys
+import webbrowser
 from dataclasses import asdict
 from pathlib import Path
 from typing import Optional
@@ -68,12 +70,49 @@ def read_pasted() -> str:
     return "\n".join(lines)
 
 
+def read_typed() -> str:
+    print("曲名を 1 曲ずつ入力して Enter を押してください。", file=sys.stderr)
+    print("アーティストが曲ごとに違う場合は「曲名 / アーティスト」と入力できます。", file=sys.stderr)
+    print("全部入力したら、何も入力せずに Enter を押してください。\n", file=sys.stderr)
+    lines = []
+    while True:
+        try:
+            line = input(f"{len(lines) + 1:2d} 曲目: ").strip()
+        except EOFError:
+            break
+        if not line or line.lower() in END_WORDS:
+            break
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def choose_input_mode() -> str:
+    print("セットリストの入力方法を選んでください。", file=sys.stderr)
+    print("  1: まとめて貼り付ける", file=sys.stderr)
+    print("  2: 1 曲ずつ手で入力する", file=sys.stderr)
+    while True:
+        try:
+            choice = input("番号 [1]: ").strip() or "1"
+        except EOFError:
+            return "paste"
+        if choice in {"1", "2"}:
+            print(file=sys.stderr)
+            return "paste" if choice == "1" else "type"
+        print("1 か 2 を入力してください", file=sys.stderr)
+
+
 def load_text(args) -> str:
     if args.file:
         return read_text_file(args.file)
     if args.clipboard:
         return read_clipboard()
-    return read_pasted()
+    if args.type:
+        mode = "type"
+    elif args.paste or args.yes:
+        mode = "paste"
+    else:
+        mode = choose_input_mode()
+    return read_typed() if mode == "type" else read_pasted()
 
 
 # ---------------------------------------------------------------------------
@@ -114,11 +153,17 @@ def review_songs(songs: list[SongEntry]) -> list[SongEntry]:
         for i, s in enumerate(songs, 1):
             section = f"[{s.section}] " if s.section and s.section != "本編" else ""
             print(f"  {i:2d}. {section}{s.display()}")
-        cmd = input("\nEnter=続行 / d 番号=削除 / e 番号=修正 / q=中止: ").strip()
+        cmd = input("\nEnter=続行 / a=曲を追加 / d 番号=削除 / e 番号=修正 / q=中止: ").strip()
         if not cmd:
             return songs
         if cmd == "q":
             sys.exit(1)
+        if cmd == "a":
+            added = parse_setlist(read_typed(), default_artist=songs[-1].artist if songs else None)
+            songs.extend(added)
+            for i, s in enumerate(songs, 1):
+                s.position = i
+            continue
         op, _, num = cmd.partition(" ")
         if op not in {"d", "e"} or not num.isdigit() or not 1 <= int(num) <= len(songs):
             print("入力が正しくありません（例: d 3）")
@@ -168,7 +213,10 @@ def default_playlist_name(file: Optional[str], artist: Optional[str]) -> str:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="setlist2spotify", description="セットリストのテキストから Spotify プレイリストを作成します")
     p.add_argument("file", nargs="?", help="セットリストを書いたテキストファイル（省略すると画面に貼り付け）")
-    p.add_argument("--clipboard", action="store_true", help="クリップボードにコピーしたセットリストを使う")
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument("--paste", action="store_true", help="セットリストをまとめて貼り付ける")
+    mode.add_argument("--type", action="store_true", help="曲名を 1 曲ずつ手入力する")
+    mode.add_argument("--clipboard", action="store_true", help="クリップボードにコピーしたセットリストを使う")
 
     p.add_argument("--artist", help="曲ごとのアーティスト表記が無い場合に使うアーティスト名（例: 櫻坂46）")
     p.add_argument("--name", help="プレイリスト名")
@@ -229,8 +277,12 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     uris = [r.best.uri for r in results if r.accepted and r.best]
     print(f"\n{len(uris)}/{len(results)} 曲が見つかりました。")
-    if args.dry_run or not uris:
-        return 0 if uris else 1
+    if args.dry_run:
+        print("（--dry-run のため、プレイリストは作成していません）")
+        return 0
+    if not uris:
+        print("追加できる曲がないため、プレイリストは作成しませんでした。")
+        return 1
 
     name = args.name or default_playlist_name(args.file, args.artist)
     if interactive:
@@ -242,9 +294,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     description = args.description or "setlist2spotify で作成"
     if missing:
         description += "（未収録: " + "、".join(missing) + "）"
+    print("\nプレイリストを作成しています...")
     playlist = client.create_playlist(name, description=description[:300], public=args.public)
     client.add_items(playlist["id"], uris)
-    print(f"作成しました: {playlist.get('external_urls', {}).get('spotify', playlist['id'])}")
+    url = playlist.get("external_urls", {}).get("spotify") or f"https://open.spotify.com/playlist/{playlist['id']}"
+    print(f"\n完成しました！「{name}」に {len(uris)} 曲を追加しました。")
+    print(f"URL: {url}")
+    print("Spotify アプリの「マイライブラリ」にも表示されます（反映まで少しかかることがあります）。")
+    if interactive:
+        webbrowser.open(url)
     return 0
 
 
