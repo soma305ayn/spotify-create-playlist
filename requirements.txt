@@ -1,5 +1,5 @@
 requests>=2.31
 Pillow>=10.0
 pytesseract>=0.3.10
-# --ocr claude を使う場合のみ必要
+# optional: only needed for --ocr claude
 anthropic>=1.0

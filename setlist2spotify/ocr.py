@@ -100,6 +100,10 @@ class TesseractExtractor:
         import pytesseract
         from PIL import Image
 
+        cmd = find_tesseract_cmd()
+        if cmd:
+            pytesseract.pytesseract.tesseract_cmd = cmd
+
         with Image.open(image_path) as img:
             img.load()
             target = preprocess_image(img) if self.preprocess else img
@@ -110,6 +114,29 @@ class TesseractExtractor:
 
     def extract(self, image_path: str | Path, default_artist: Optional[str] = None) -> list[SongEntry]:
         return parse_setlist(self.image_to_text(image_path), default_artist=default_artist)
+
+
+def find_tesseract_cmd() -> Optional[str]:
+    """Tesseract の実行ファイルを探す。
+
+    環境変数 TESSERACT_CMD → PATH → Windows の標準インストール先 の順に探す。
+    Windows では PATH に登録されないことが多いため、標準の場所も確認する。
+    """
+    import os
+    import shutil
+
+    env = os.environ.get("TESSERACT_CMD")
+    if env:
+        return env
+    found = shutil.which("tesseract")
+    if found:
+        return found
+    for base in (os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)"), os.environ.get("LOCALAPPDATA")):
+        if base:
+            candidate = Path(base) / "Tesseract-OCR" / "tesseract.exe"
+            if candidate.exists():
+                return str(candidate)
+    return None
 
 
 def _join_cjk_spaces(text: str) -> str:

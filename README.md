@@ -22,9 +22,10 @@
 # Tesseract 本体と日本語データ（--ocr tesseract の場合）
 sudo apt install tesseract-ocr tesseract-ocr-jpn   # macOS: brew install tesseract tesseract-lang
 
-cd setlist2spotify
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
+
+**Windows の場合:** Tesseract は [UB Mannheim 版インストーラー](https://github.com/UB-Mannheim/tesseract/wiki) で入れ、途中の「Additional language data」で **Japanese** にチェックを入れてください。標準の場所（`C:\Program Files\Tesseract-OCR`）に入れれば自動で見つけます。別の場所に入れた場合は環境変数 `TESSERACT_CMD` に `tesseract.exe` のパスを設定してください。
 
 ### Spotify アプリの登録
 

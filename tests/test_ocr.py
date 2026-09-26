@@ -77,3 +77,22 @@ def test_tesseract_end_to_end(tmp_path):
 
     songs = TesseractExtractor().extract(path, default_artist="櫻坂46")
     assert [s.title for s in songs] == ["流れ弾", "BAN", "桜月", "櫻坂の詩"]
+
+
+def test_find_tesseract_cmd_prefers_env(monkeypatch):
+    from setlist2spotify.ocr import find_tesseract_cmd
+
+    monkeypatch.setenv("TESSERACT_CMD", r"C:\custom\tesseract.exe")
+    assert find_tesseract_cmd() == r"C:\custom\tesseract.exe"
+
+
+def test_find_tesseract_cmd_windows_default(monkeypatch, tmp_path):
+    from setlist2spotify import ocr
+
+    exe = tmp_path / "Tesseract-OCR" / "tesseract.exe"
+    exe.parent.mkdir()
+    exe.write_text("")
+    monkeypatch.delenv("TESSERACT_CMD", raising=False)
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    monkeypatch.setenv("ProgramFiles", str(tmp_path))
+    assert ocr.find_tesseract_cmd() == str(exe)
