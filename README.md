@@ -1,102 +1,94 @@
 # setlist2spotify
 
-ライブのセットリスト画像から曲名・アーティスト名を読み取り、Spotify で検索して新しいプレイリストを自動作成する Python ツールです。
+ライブのセットリスト（曲名の一覧）を貼り付けるだけで、Spotify で曲を探して新しいプレイリストを自動作成するツールです。
 
 ```
-画像 ──(前処理 + OCR)──▶ テキスト ──(パーサ)──▶ 曲リスト ──(Spotify 検索 + スコアリング)──▶ プレイリスト
+セットリストを貼り付け ──▶ 曲名・アーティスト名を読み取り ──▶ Spotify で検索 ──▶ プレイリスト作成
 ```
 
-## 構成
+## セットリストの文字を用意する
 
-| ファイル | 役割 |
-|---|---|
-| `setlist2spotify/ocr.py` | 画像前処理（拡大・反転・大津二値化）と OCR バックエンド（Tesseract / Claude Vision） |
-| `setlist2spotify/parser.py` | OCR テキストから曲番号（`M1` `01.` `EN1` `⑤` など）・MC 等の除外・曲名/アーティスト分割 |
-| `setlist2spotify/matcher.py` | 複数クエリで Spotify を検索し、曲名・アーティスト名の類似度で最適なトラックを選択 |
-| `setlist2spotify/spotify.py` | Spotify Web API クライアント（PKCE 認証・トークン自動更新・429 リトライ） |
-| `setlist2spotify/cli.py` | 一連のワークフローを実行する CLI |
+画像のセットリストは、スマホの文字認識で文字にしてからコピーするのが手軽で正確です。
 
-## セットアップ
+- **iPhone**: 写真アプリで画像を開き、右下の「テキスト認識」ボタン（または文字を長押し）→ すべてを選択 → コピー
+- **Android**: Google フォトで画像を開き「レンズ」→「テキスト」→ すべてを選択 → コピー
+- **Web のセットリスト**: そのまま範囲選択してコピー
 
-```bash
-# Tesseract 本体と日本語データ（--ocr tesseract の場合）
-sudo apt install tesseract-ocr tesseract-ocr-jpn   # macOS: brew install tesseract tesseract-lang
+コピーした文字は、LINE の Keep メモやメールなどで自分の PC に送ってください。
 
-python -m pip install -r requirements.txt
-```
+多少ゴミが混ざっていても大丈夫です。次のような行は自動で除きます。
 
-**Windows の場合:** Tesseract は [UB Mannheim 版インストーラー](https://github.com/UB-Mannheim/tesseract/wiki) で入れ、途中の「Additional language data」で **Japanese** にチェックを入れてください。標準の場所（`C:\Program Files\Tesseract-OCR`）に入れれば自動で見つけます。別の場所に入れた場合は環境変数 `TESSERACT_CMD` に `tesseract.exe` のパスを設定してください。
+- `M1` `01.` `EN1` などの曲番号（曲名から外します）
+- MC、VTR、影ナレなどの進行項目
+- 公演名・日付・会場の行（曲番号付きの行が 3 行以上ある場合）
 
-### Spotify アプリの登録
+`曲名 / アーティスト` の形なら、アーティスト名も読み取ります。
 
-1. <https://developer.spotify.com/dashboard> でアプリを作成
-2. Redirect URI に `http://127.0.0.1:8888/callback` を追加（`localhost` は不可）
-3. Web API を有効化し、Client ID を控える（PKCE を使うため Client Secret は不要）
+## はじめての準備（1 回だけ）
 
-```bash
-export SPOTIFY_CLIENT_ID=xxxxxxxxxxxxxxxx
-```
+1. **Python** を https://www.python.org/downloads/ から入れる（インストール画面で「Add python.exe to PATH」にチェック）
+2. このリポジトリを「Code」→「Download ZIP」でダウンロードして展開
+3. 展開したフォルダ（`README.md` がある場所）で右クリック →「ターミナルで開く」→ 次を実行
 
-初回実行時にブラウザが開き、Spotify へのアクセス許可を求められます。トークンは `~/.cache/setlist2spotify/token.json` に保存され、以降は自動更新されます。
+   ```powershell
+   python -m pip install -r requirements.txt
+   ```
+
+4. **Spotify アプリを登録**して Client ID を取得
+   1. <https://developer.spotify.com/dashboard> で「Create app」（Spotify Premium が必要です）
+   2. Redirect URIs に `http://127.0.0.1:8888/callback` を追加（`localhost` は不可）
+   3. 「Web API」にチェックして保存し、Settings の **Client ID** を控える
 
 ## 使い方
 
-```bash
-# 基本: 抽出結果を確認・修正 → 検索 → 曖昧な曲は候補から選択 → 作成
-python -m setlist2spotify setlist.jpg --artist 櫻坂46 --name "5th YEAR ANNIVERSARY LIVE"
+1. フォルダ内の **`setlist2spotify.bat` をダブルクリック**（またはターミナルで `python -m setlist2spotify`）
+2. セットリストを貼り付け（右クリックまたは Ctrl+V）、最後に新しい行で `end` と入力して Enter
+3. 聞かれたらアーティスト名を入力（例: `AKB48`。検索精度が上がります）
+4. 読み取った曲の一覧を確認。間違いがあれば `d 3`（3 曲目を削除）や `e 3`（3 曲目を修正）、良ければ Enter
+5. 初回だけ Client ID を聞かれるので入力（以降は保存されます）
+6. 初回だけブラウザが開くので、Spotify で「同意する」を押す
+7. 自信のない曲は候補が表示されるので番号で選ぶ（Enter でスキップ）
+8. プレイリスト名を入力して完成
 
-# 抽出結果だけ確認（Spotify 不要）
-python -m setlist2spotify setlist.jpg --extract-only --show-ocr
+### その他の使い方
 
+```powershell
 # 検索結果だけ確認（プレイリストは作らない）
-python -m setlist2spotify setlist.jpg --artist 日向坂46 --dry-run
+python -m setlist2spotify --dry-run
 
-# 装飾の多い画像・縦書きなどは Claude Vision で抽出（要 ANTHROPIC_API_KEY）
-python -m setlist2spotify setlist.jpg --ocr claude
+# コピーした内容をそのまま使う（貼り付け不要）
+python -m setlist2spotify --clipboard --artist AKB48
 
-# テキストから（OCR 済み・手入力のセットリスト）、確認なしで全自動
-python -m setlist2spotify --text setlist.txt --artist 櫻坂46 --yes --public
+# テキストファイルから読み込む
+python -m setlist2spotify setlist.txt --artist AKB48 --name "春コンサート2026"
 ```
-
-主なオプション:
 
 | オプション | 説明 |
 |---|---|
-| `--artist` | 曲ごとにアーティスト表記がない場合の既定アーティスト（検索精度が大きく上がります） |
-| `--ocr tesseract\|claude` | OCR バックエンド（既定: tesseract） |
-| `--threshold 0.75` | 自動採用する一致スコア。未満の曲は候補から手動選択（`--yes` 時はスキップ） |
-| `--market JP` | 検索対象の国 |
-| `--psm 6` / `--no-preprocess` | Tesseract の調整用 |
+| `--artist` | アーティスト名（指定すると入力を聞かれません） |
+| `--name` | プレイリスト名 |
+| `--public` | 公開プレイリストとして作成（既定は非公開） |
+| `--dry-run` | 検索だけしてプレイリストは作らない |
+| `--yes` | 確認や候補選択をせず自動で進める |
+| `--threshold 0.75` | 自動で採用する一致度（0〜1）。下げると候補選択が減る |
+| `--client-id` | Client ID を指定（一度指定すると保存されます） |
 
-## 精度を上げる工夫
+## Spotify での曲の探し方
 
-**OCR**
-- EXIF 回転補正、小さい画像の拡大、暗い背景（告知画像に多い白文字）の自動反転、大津法による二値化
-- Tesseract が日本語の文字間に挿入する余分な空白を除去
-- 全角英数字・丸数字を NFKC で正規化
-- `--ocr claude` では Claude のビジョン + JSON スキーマ指定の構造化出力で、曲名・アーティスト・本編/アンコールを直接取得
+- 「曲名＋アーティスト名」→「フリーワード」→「曲名だけ」の順に検索します
+- カタカナ/ひらがな・全角/半角・記号の違いを吸収して、曲名とアーティスト名の近さを点数にします
+- カラオケ・オフボーカル・オルゴール・カバーなどの音源は点数を下げます
+- 見つからなかった曲は、プレイリストの説明欄に「未収録」として書き残します
 
-**パース**
-- `M1` `01.` `3)` `⑤` `EN1` `W-EN1` などの曲番号表記に対応。`2人セゾン` のような数字始まりの曲名は番号と誤認しない
-- 番号付き行が 3 行以上あれば、番号のない行（公演名・日付・会場）はノイズとして除外
-- `MC` `VTR` `影ナレ` などの進行項目を除外
-- `曲名 / アーティスト`、`曲名 - アーティスト`、`「曲名」アーティスト` を分割
+## 補足
 
-**Spotify 照合**
-- `track:"曲名" artist:"アーティスト"` → フリーワード → バージョン表記除去 → 曲名のみ、の順に検索
-- カタカナ/ひらがな・全角/半角・記号の違いを吸収した類似度（曲名 70% + アーティスト 30%）
-- `(off vocal)` `カラオケ` `オルゴール` `cover` などの音源は減点
-- 高スコアの一致が見つかった時点で追加検索を打ち切り、API 呼び出しを節約
-
-## Spotify Web API について
-
-2026 年 2 月の Web API 変更に対応しています（プレイリスト作成は `POST /me/playlists`、曲追加は `POST /playlists/{id}/items`、検索の `limit` 上限は 10）。Development Mode のアプリでは、ダッシュボードで許可したユーザーのみ利用できます。
+- Spotify の 2026 年 2 月の Web API 変更に対応しています（`POST /me/playlists`、`POST /playlists/{id}/items`、検索 `limit` 上限 10）
+- 開発者モードのアプリは、登録者本人と「User Management」に追加した最大 5 人まで使えます
+- Client ID とログイン情報は `C:\Users\<ユーザー名>\.cache\setlist2spotify\` に保存されます
 
 ## テスト
 
 ```bash
-pip install -r requirements-dev.txt
+python -m pip install -r requirements-dev.txt
 python -m pytest
 ```
-
-Tesseract と日本語フォントがある環境では、生成した画像を実際に OCR する E2E テストも実行されます。

@@ -1,6 +1,6 @@
-"""OCR で得たテキストをセットリスト（曲名・アーティスト名）に変換するパーサ。
+"""貼り付けられたセットリストのテキストを曲名・アーティスト名に変換するパーサ。
 
-セットリスト画像によくある表記を扱う:
+セットリストによくある表記を扱う:
 
     M1. 流れ弾
     01 サイレントマジョリティー / 欅坂46
@@ -42,6 +42,8 @@ _M_NUM = re.compile(r"^M\s*[.\-:：]?\s*(?P<n>\d{1,2})\s*[.):：、]?\s*", re.IG
 _PLAIN_NUM = re.compile(r"^(?P<n>\d{1,2})(?:\s*[.)\]:：、]\s*|\s+|(?=[「『\"“]))")
 
 _SECTION_ENCORE = re.compile(r"^[\W_]*(?:w[-\s]?)?(?:encore|アンコール|ダブルアンコール)[\W_]*$", re.IGNORECASE)
+# "MC1" "MC②" "VTR 3" のような番号付きの進行項目
+_NUMBERED_SKIP = re.compile(r"(?:mc|vtr|se|影ナレ|幕間)\s*\d{0,2}", re.IGNORECASE)
 _DATE_LIKE = re.compile(r"\d{2,4}\s*[./年\-]\s*\d{1,2}\s*[./月\-]\s*\d{1,2}")
 _QUOTED = re.compile(r"^[「『\"“](?P<title>.+?)[」』\"”]\s*(?P<rest>.*)$")
 _BULLET = re.compile(r"^[\s・•●○◆◇■□▶►*＊\-–—―~〜]+")
@@ -55,7 +57,7 @@ def normalize(text: str) -> str:
 
 
 def _strip_trailing_noise(text: str) -> str:
-    # OCR が行末に拾いがちな記号・罫線を除去
+    # 行末の記号・罫線を除去
     return re.sub(r"[\s|_=.…・]+$", "", text).strip()
 
 
@@ -91,7 +93,7 @@ def parse_setlist(
     default_artist: Optional[str] = None,
     skip_words: Iterable[str] = DEFAULT_SKIP_WORDS,
 ) -> list[SongEntry]:
-    """OCR テキスト全体を解析して曲リストを返す。
+    """セットリストのテキスト全体を解析して曲リストを返す。
 
     番号付きの行が 3 行以上ある場合は、番号のない行（タイトル・会場名など）を
     ノイズとみなして捨てる。番号付きの行が少ない場合は、ヘッダらしくない行を
@@ -111,7 +113,7 @@ def parse_setlist(
             continue
         num, is_encore, body = parse_line(line)
         body = _strip_trailing_noise(_BULLET.sub("", body))
-        if not body or body.lower() in skip:
+        if not body or body.lower() in skip or _NUMBERED_SKIP.fullmatch(body):
             continue
         if num is None and (_DATE_LIKE.search(body) or not re.search(r"\w", body)):
             continue

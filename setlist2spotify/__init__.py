@@ -1,4 +1,4 @@
-"""セットリスト画像から Spotify プレイリストを作成するツール。"""
+"""セットリストのテキストから Spotify プレイリストを作成するツール。"""
 
 from .models import MatchResult, SongEntry, TrackMatch
 from .parser import parse_setlist

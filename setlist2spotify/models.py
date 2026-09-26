@@ -14,7 +14,7 @@ class SongEntry:
     artist: Optional[str] = None
     position: Optional[int] = None  # セットリスト上の曲順（1 始まり）
     section: Optional[str] = None  # "本編" / "アンコール" など
-    raw_line: str = ""  # OCR で読み取った元の行（デバッグ用）
+    raw_line: str = ""  # 貼り付けられた元の行（デバッグ用）
 
     def display(self) -> str:
         artist = f" / {self.artist}" if self.artist else ""

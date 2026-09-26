@@ -66,3 +66,8 @@ def test_title_with_hyphen_without_spaces_is_not_split():
 
 def test_normalize():
     assert normalize("ＢＡＮ　 ①") == "BAN 1"
+
+
+def test_numbered_mc_is_skipped_in_unnumbered_list():
+    songs = parse_setlist("会いたかった\nMC①\nヘビーローテーション\nVTR 2\n")
+    assert titles(songs) == ["会いたかった", "ヘビーローテーション"]
